@@ -111,7 +111,20 @@ The server ships the context an AI agent needs — no extra prompting required b
 - **Tool annotations**: the ten read-only tools carry `readOnlyHint`, `delete_messages` carries `destructiveHint` — clients can auto-approve reads and gate deletes.
 - **MCP prompts**: `verify_email` (wait for a message matching a query, then verify structure, links and client compatibility against an optional checklist) and `inspect_mailbox` (summarize mailbox state, flag anomalies). Claude Code exposes these as slash commands.
 
-There's also a copyable [Claude Code skill](examples/claude-code-skill/verify-email/SKILL.md) encoding the full verification workflow — drop it into your project's `.claude/skills/` directory.
+## Claude Code plugin
+
+The easiest way to use this from Claude Code — one install, prompted for your endpoint and token, no manual MCP or skill setup:
+
+```
+/plugin marketplace add CeDJeY/mailpit-mcp-server
+/plugin install mailpit@cedjey
+```
+
+On enable, Claude Code asks for:
+- **Mailpit MCP endpoint URL** — e.g. `http://your-host:3000/mcp`
+- **Bearer token** — the server's `MCP_AUTH_TOKEN` (leave empty if auth is disabled)
+
+The plugin bundles the MCP connection plus a `verify-email` skill (invocable as `/mailpit:verify-email`) that encodes the full verification workflow: wait for the email, inspect structure, extract links safely, check HTML compatibility, report a PASS/FAIL verdict. Plugin source lives in [plugin/](plugin/); non-plugin users can copy [the skill](plugin/skills/verify-email/SKILL.md) into their project's `.claude/skills/` manually.
 
 ## Configuration
 

@@ -1,0 +1,23 @@
+{
+  "name": "cedjey",
+  "description": "Email testing tools for Claude Code: Mailpit MCP integration and verification workflows",
+  "owner": {
+    "name": "CeDJeY",
+    "url": "https://github.com/CeDJeY"
+  },
+  "plugins": [
+    {
+      "name": "mailpit",
+      "source": "./plugin",
+      "displayName": "Mailpit Email Testing",
+      "description": "Work with a Mailpit test mailbox: 14 MCP tools (read, search, send, wait-for, link/HTML checks) plus an email-verification skill",
+      "version": "1.3.0",
+      "author": { "name": "CeDJeY" },
+      "homepage": "https://github.com/CeDJeY/mailpit-mcp-server",
+      "repository": "https://github.com/CeDJeY/mailpit-mcp-server",
+      "license": "MIT",
+      "keywords": ["mailpit", "email", "smtp", "testing", "mcp"],
+      "category": "testing"
+    }
+  ]
+}

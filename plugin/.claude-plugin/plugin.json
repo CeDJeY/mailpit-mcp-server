@@ -1,0 +1,28 @@
+{
+  "name": "mailpit",
+  "displayName": "Mailpit Email Testing",
+  "description": "Work with a Mailpit test mailbox: 14 MCP tools (read, search, send, wait-for, link/HTML checks) plus an email-verification skill",
+  "version": "1.3.0",
+  "author": {
+    "name": "CeDJeY",
+    "url": "https://github.com/CeDJeY"
+  },
+  "homepage": "https://github.com/CeDJeY/mailpit-mcp-server",
+  "license": "MIT",
+  "mcpServers": "./.mcp.json",
+  "userConfig": {
+    "mcp_url": {
+      "type": "string",
+      "title": "Mailpit MCP endpoint URL",
+      "description": "The /mcp endpoint of your mailpit-mcp-server instance, e.g. http://your-host:3000/mcp",
+      "default": "http://localhost:3000/mcp"
+    },
+    "auth_token": {
+      "type": "string",
+      "title": "Bearer token",
+      "description": "The MCP_AUTH_TOKEN configured on the server; leave empty if the server runs without auth",
+      "sensitive": true,
+      "default": ""
+    }
+  }
+}
