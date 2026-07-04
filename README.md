@@ -15,6 +15,13 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) server for [Mailpit
 | `search_messages` | Search with Mailpit query syntax (`from:`, `subject:`, `is:unread`, `tag:` …) |
 | `get_message` | Full message by ID or `latest` — headers, text/HTML bodies, attachment metadata |
 | `get_message_headers` | Raw headers of a message |
+| `get_message_source` | Full raw RFC-822 source (headers + MIME parts) |
+| `get_attachment` | Download an attachment — images returned as images, text as text, other as base64 |
+| `check_html` | HTML compatibility analysis across email clients |
+| `check_links` | Extract links, optionally verify them for broken-link detection |
+| `send_message` | Compose and inject a test email via the Mailpit API (captured, not delivered) |
+| `wait_for_message` | Poll until a new (optionally matching) message arrives — great for e2e flows |
+| `set_read_status` | Mark messages read/unread, by ID or all |
 | `delete_messages` | Delete messages by ID, or all messages |
 | `get_mailbox_info` | Mailpit version, message/unread counts, database size |
 

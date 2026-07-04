@@ -1,4 +1,4 @@
-// Connects to the MCP endpoint as a real client and reads the mailbox through it
+// Connects to the MCP endpoint as a real client and exercises the tool surface
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
@@ -11,21 +11,60 @@ await client.connect(
   }),
 );
 
+async function call(name, args = {}) {
+  const r = await client.callTool({ name, arguments: args });
+  const text = r.content?.[0]?.text ?? "";
+  if (r.isError) throw new Error(`${name} failed: ${text}`);
+  return text;
+}
+
 const { tools } = await client.listTools();
-console.log("Tools:", tools.map((t) => t.name).join(", "));
+console.log(`Tools (${tools.length}):`, tools.map((t) => t.name).join(", "));
 
-const info = await client.callTool({ name: "get_mailbox_info", arguments: {} });
-console.log("\n--- get_mailbox_info ---\n", info.content[0].text);
+const info = JSON.parse(await call("get_mailbox_info"));
+console.log("get_mailbox_info: Mailpit", info.Version, "—", info.Messages, "message(s)");
 
-const list = await client.callTool({ name: "list_messages", arguments: { limit: 5 } });
-console.log("\n--- list_messages ---\n", list.content[0].text);
+const list = JSON.parse(await call("list_messages", { limit: 5 }));
+console.log("list_messages:", list.messages_count, "total");
 
-const latest = await client.callTool({ name: "get_message", arguments: { id: "latest" } });
-const msg = JSON.parse(latest.content[0].text);
-console.log("\n--- get_message(latest) ---");
-console.log("Subject:", msg.Subject);
-console.log("From:", msg.From?.Address);
-console.log("To:", msg.To?.map((t) => t.Address).join(", "));
-console.log("Text body:", msg.Text?.trim());
+// send a message via the API and verify the full read-path against it
+const sent = JSON.parse(
+  await call("send_message", {
+    from: "mcp-test@example.com",
+    from_name: "MCP Test",
+    to: ["dest@example.com"],
+    subject: "MCP e2e send",
+    text: "sent through the MCP send_message tool",
+    html: '<p>sent via <a href="https://example.com">MCP</a></p>',
+  }),
+);
+console.log("send_message: ID", sent.ID);
 
+const msg = JSON.parse(await call("get_message", { id: sent.ID }));
+console.log("get_message: subject:", msg.Subject, "| from:", msg.From?.Address);
+
+const source = await call("get_message_source", { id: sent.ID });
+console.log("get_message_source:", source.split("\r\n")[0] || source.split("\n")[0]);
+
+const htmlCheck = JSON.parse(await call("check_html", { id: sent.ID }));
+console.log("check_html: keys:", Object.keys(htmlCheck).join(", "));
+
+const linkCheck = JSON.parse(await call("check_links", { id: sent.ID }));
+console.log("check_links: links found:", linkCheck.Links?.length ?? 0);
+
+await call("set_read_status", { read: true, ids: [sent.ID] });
+console.log("set_read_status: OK");
+
+// wait_for_message: start waiting, then send — the wait must pick it up
+const waitPromise = call("wait_for_message", { query: 'subject:"wait-target"', timeout_seconds: 20 });
+await call("send_message", {
+  from: "waiter@example.com",
+  to: ["dest@example.com"],
+  subject: "wait-target arrived",
+  text: "triggering the waiter",
+});
+const waited = JSON.parse(await waitPromise);
+console.log("wait_for_message: caught:", waited.Subject);
+
+console.log("\nAll checks passed.");
 await client.close();
