@@ -124,7 +124,12 @@ On enable, Claude Code asks for:
 - **Mailpit MCP endpoint URL** — e.g. `http://your-host:3000/mcp`
 - **Bearer token** — the server's `MCP_AUTH_TOKEN` (leave empty if auth is disabled)
 
-The plugin bundles the MCP connection plus a `verify-email` skill (invocable as `/mailpit:verify-email`) that encodes the full verification workflow: wait for the email, inspect structure, extract links safely, check HTML compatibility, report a PASS/FAIL verdict. Plugin source lives in [plugin/](plugin/); non-plugin users can copy [the skill](plugin/skills/verify-email/SKILL.md) into their project's `.claude/skills/` manually.
+The plugin bundles the MCP connection plus two skills:
+
+- **`verify-email`** — the verification workflow: wait for the email, inspect structure, extract links safely, check HTML compatibility, report a PASS/FAIL verdict.
+- **`route-mail-to-mailpit`** — the prerequisite the verification depends on: configure the application under test to send SMTP to Mailpit, prove it with a canary email, and flag configurations that could leak test mail to real SMTP providers.
+
+Plugin source lives in [plugin/](plugin/); non-plugin users can copy the [skills](plugin/skills/) into their project's `.claude/skills/` manually.
 
 ## Configuration
 
