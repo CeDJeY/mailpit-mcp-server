@@ -262,9 +262,18 @@ function buildServer() {
       inputSchema: {
         query: z.string().optional().describe('Mailpit search query to match, e.g. `to:user@example.com subject:"welcome"`; omit for any message'),
         timeout_seconds: z.number().int().min(1).max(120).default(30).describe("How long to wait"),
+        accept_recent_seconds: z
+          .number()
+          .int()
+          .min(0)
+          .max(300)
+          .default(5)
+          .describe(
+            "Also accept a matching message that arrived up to this many seconds BEFORE the wait started (avoids racing fast emails); 0 = only strictly new messages",
+          ),
       },
     },
-    async ({ query, timeout_seconds }) => {
+    async ({ query, timeout_seconds, accept_recent_seconds }) => {
       const newest = async () => {
         const q = query?.trim();
         const data = q
@@ -273,6 +282,10 @@ function buildServer() {
         return data.messages?.[0] ?? null;
       };
       const initial = await newest();
+      // The awaited email may land moments before we take the snapshot — accept it
+      if (initial && accept_recent_seconds > 0 && Date.now() - Date.parse(initial.Created) < accept_recent_seconds * 1000) {
+        return asResult(initial);
+      }
       const deadline = Date.now() + timeout_seconds * 1000;
       while (Date.now() < deadline) {
         await sleep(1000);
