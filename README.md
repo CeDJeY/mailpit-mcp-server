@@ -18,7 +18,8 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) server for [Mailpit
 | `get_message_source` | Full raw RFC-822 source (headers + MIME parts) |
 | `get_attachment` | Download an attachment — images returned as images, text as text, other as base64 |
 | `check_html` | HTML compatibility analysis across email clients |
-| `check_links` | Extract links, optionally verify them for broken-link detection |
+| `get_message_links` | Extract all URLs without requesting them — safe retrieval of confirmation/reset/unsubscribe links for e2e flows |
+| `check_links` | Verify links by requesting them (real GETs — may trigger one-click actions; auth-protected links can return 302/401/403 without being broken) |
 | `send_message` | Compose and inject a test email via the Mailpit API (captured, not delivered) |
 | `wait_for_message` | Poll until a new (optionally matching) message arrives — great for e2e flows |
 | `set_read_status` | Mark messages read/unread, by ID or all |

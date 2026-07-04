@@ -48,7 +48,8 @@ const INSTRUCTIONS = `Mailpit MCP server — access to a Mailpit test mailbox ho
 Typical workflows:
 - Inspect: list_messages or search_messages → get_message (full bodies + attachment metadata) → get_message_headers / get_message_source for MIME- or encoding-level debugging.
 - E2E testing: trigger the action in the app under test, then wait_for_message (e.g. query 'to:user@example.com subject:"welcome"') → get_message with the returned ID → verify content. wait_for_message also accepts messages that arrived up to accept_recent_seconds before the call, so call it right after (not long after) the trigger.
-- Template QA (HTML emails): get_message → check_html for email-client compatibility, check_links with follow=true to detect broken links. Look for unrendered template variables (e.g. {{name}}), missing sections, placeholder images.
+- Template QA (HTML emails): get_message → check_html for email-client compatibility, check_links to detect broken links. Look for unrendered template variables (e.g. {{name}}), missing sections, placeholder images.
+- Action links (confirmation, password reset, unsubscribe): get_message_links extracts URLs WITHOUT requesting them — retrieve the link, then open it with your own tooling and session handling. check_links performs real GETs on every link: it may trigger one-click actions, and auth-protected links legitimately return 302/401/403 without being broken.
 - Attachments: get_message lists Attachments with their PartID → get_attachment(id, part_id). Images are returned as viewable images; 2MB size cap.
 
 Notes:
@@ -211,14 +212,43 @@ function buildServer() {
     {
       title: "Check links",
       annotations: { readOnlyHint: true, openWorldHint: true },
-      description: "Extract all links from a message and optionally verify them (detect broken links)",
+      description:
+        "Verify a message's links by REQUESTING each one and reporting HTTP status codes. Caution: this performs a real GET on every link — one-click action links (unsubscribe, confirmation) may be triggered by it; use get_message_links to retrieve URLs without requesting them. Interpret results with context: auth-protected links legitimately return 302/401/403 without being broken",
       inputSchema: {
         id: z.string().min(1).describe("Message ID, or `latest`"),
-        follow: z.boolean().default(false).describe("Actually request each link and report HTTP status codes"),
+        follow: z.boolean().default(false).describe("Follow redirects and report the final status code"),
       },
     },
     async ({ id, follow }) =>
       asResult(await mailpit(`/api/v1/message/${encodeURIComponent(id)}/link-check?follow=${follow}`)),
+  );
+
+  server.registerTool(
+    "get_message_links",
+    {
+      title: "Extract links",
+      annotations: { readOnlyHint: true },
+      description:
+        "Extract all URLs from a message's HTML and text bodies WITHOUT requesting any of them (no side effects, works for auth-protected links). Use this to retrieve action links — confirmation, password reset, unsubscribe — for e2e flows where you open the link yourself with proper session handling",
+      inputSchema: {
+        id: z.string().min(1).describe("Message ID, or `latest`"),
+      },
+    },
+    async ({ id }) => {
+      const msg = await mailpit(`/api/v1/message/${encodeURIComponent(id)}`);
+      const links = [];
+      const seen = new Set();
+      const add = (url) => {
+        const clean = url.replace(/[.,;:!?)\]]+$/, "");
+        if (/^https?:\/\//i.test(clean) && !seen.has(clean)) {
+          seen.add(clean);
+          links.push(clean);
+        }
+      };
+      for (const m of (msg.HTML ?? "").matchAll(/href\s*=\s*["']([^"']+)["']/gi)) add(m[1]);
+      for (const m of (msg.Text ?? "").matchAll(/https?:\/\/[^\s<>"')\]]+/gi)) add(m[0]);
+      return asResult({ count: links.length, links });
+    },
   );
 
   server.registerTool(
@@ -342,7 +372,7 @@ function buildServer() {
 
 1. Call wait_for_message with query \`${query}\` (it also accepts a message that arrived a few seconds ago).
 2. Call get_message with the returned ID and review subject, sender, recipients, text and HTML bodies.
-3. Call check_links with follow=true — report any broken links.
+3. Call get_message_links to enumerate the URLs. If none look like one-click action links (unsubscribe, confirm, reset), also call check_links with follow=true to detect broken links — but treat 302/401/403 on auth-protected links as expected, not broken. If action links are present, do NOT run check_links (it performs real GETs and could trigger them); verify those URLs by structure instead (correct host, expected path, token present).
 4. If the message has an HTML body, call check_html and note compatibility warnings that matter for mainstream clients.
 5. Inspect for general defects: unrendered template variables (like {{name}}), placeholder/missing images, empty sections, encoding artifacts.
 

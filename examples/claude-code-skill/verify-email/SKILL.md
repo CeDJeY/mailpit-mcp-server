@@ -17,7 +17,7 @@ From the user's request, determine:
 
 1. If the email is expected to arrive as a result of a just-triggered action, call `wait_for_message` with the query (default timeout is fine; it also accepts messages that arrived a few seconds before the call). Otherwise `search_messages` / `get_message(latest)`.
 2. `get_message` with the found ID — review subject, sender, recipients, text and HTML bodies, attachment list.
-3. `check_links` with `follow: true` — any non-2xx link is a finding.
+3. `get_message_links` — enumerate the URLs without requesting them (safe for auth-protected and one-click action links). If the email contains action links (confirm, reset, unsubscribe), do NOT run `check_links` — it performs real GETs and could trigger them; verify action links by structure instead (correct host, expected path, token present). Otherwise run `check_links` with `follow: true`, and treat 302/401/403 on auth-protected links as expected rather than broken.
 4. If there is an HTML body: `check_html` — note compatibility warnings relevant to mainstream clients (Gmail, Outlook, Apple Mail); ignore exotic ones unless the user cares.
 5. Look for general defects regardless of checklist: unrendered template variables (`{{name}}`, `%FIRST_NAME%`), placeholder or missing images, empty sections, mojibake/encoding artifacts, obviously wrong personalization.
 6. If the user provided a checklist, verify every item explicitly.

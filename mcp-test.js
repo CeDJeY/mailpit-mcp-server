@@ -67,6 +67,10 @@ console.log("check_html: keys:", Object.keys(htmlCheck).join(", "));
 const linkCheck = JSON.parse(await call("check_links", { id: sent.ID }));
 console.log("check_links: links found:", linkCheck.Links?.length ?? 0);
 
+const extracted = JSON.parse(await call("get_message_links", { id: sent.ID }));
+if (!extracted.links?.includes("https://example.com")) throw new Error("get_message_links missed the HTML link");
+console.log("get_message_links:", extracted.count, "link(s):", extracted.links.join(", "));
+
 await call("set_read_status", { read: true, ids: [sent.ID] });
 console.log("set_read_status: OK");
 
