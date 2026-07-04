@@ -1,0 +1,33 @@
+{
+  "name": "mailpit-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for Mailpit — lets AI assistants read, search and manage captured test emails over streamable HTTP or stdio",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node mcp-test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CeDJeY/mailpit-mcp-server.git"
+  },
+  "keywords": [
+    "mailpit",
+    "mcp",
+    "model-context-protocol",
+    "email",
+    "smtp",
+    "testing"
+  ],
+  "author": "CeDJeY",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "express": "^5.1.0",
+    "zod": "^3.24.0"
+  }
+}
