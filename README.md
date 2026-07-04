@@ -140,6 +140,7 @@ Plugin source lives in [plugin/](plugin/); non-plugin users can copy the [skills
 | `MCP_HTTP_PORT` | `3000` | Port for the HTTP endpoint |
 | `MCP_AUTH_TOKEN` | *(empty = auth off)* | When set, `/mcp` requires `Authorization: Bearer <token>` |
 | `MAILPIT_AUTH_USER` / `MAILPIT_AUTH_PASS` | *(none)* | Basic-auth credentials if Mailpit's API is protected |
+| `MAILPIT_SMTP_ADVERTISE` | *(none)* | SMTP `host:port` applications must send to (as reachable by them); exposed to agents via `get_mailbox_info` (`SMTPEndpoint`) and the server instructions so they can verify app mail routing |
 
 The HTTP mode also serves `GET /healthz` (no auth) for container healthchecks.
 

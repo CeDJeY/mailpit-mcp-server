@@ -13,6 +13,9 @@ const TRANSPORT = process.env.MCP_TRANSPORT ?? "http";
 const PORT = Number(process.env.MCP_HTTP_PORT ?? 3000);
 // When set, every /mcp request must carry "Authorization: Bearer <token>"
 const AUTH_TOKEN = process.env.MCP_AUTH_TOKEN?.trim() || null;
+// Operator-advertised SMTP endpoint (host:port) applications must send to for
+// THIS Mailpit to capture their mail — exposed to agents via get_mailbox_info
+const SMTP_ADVERTISE = process.env.MAILPIT_SMTP_ADVERTISE?.trim() || null;
 // Credentials for Mailpit itself, when its API is behind basic auth (--ui-auth-file)
 const MAILPIT_BASIC_AUTH =
   process.env.MAILPIT_AUTH_USER && process.env.MAILPIT_AUTH_PASS
@@ -44,6 +47,12 @@ function asResult(data) {
 }
 
 const INSTRUCTIONS = `Mailpit MCP server — access to a Mailpit test mailbox holding emails captured from the application under test. Nothing here is delivered to real recipients; send_message only injects test data into Mailpit.
+
+${
+  SMTP_ADVERTISE
+    ? `IMPORTANT: this mailbox only captures mail sent to its SMTP endpoint: ${SMTP_ADVERTISE}. Before verifying emails, make sure the application under test sends there — if its mail config points elsewhere (another Mailpit instance, a real provider), the emails you wait for will never appear here.`
+    : `IMPORTANT: this mailbox only captures mail sent to its SMTP endpoint. The operator has not advertised that endpoint (MAILPIT_SMTP_ADVERTISE is unset) — ask the user for the SMTP host:port before configuring or diagnosing the application under test; do not guess ports.`
+}
 
 Typical workflows:
 - Inspect: list_messages or search_messages → get_message (full bodies + attachment metadata) → get_message_headers / get_message_source for MIME- or encoding-level debugging.
@@ -140,10 +149,11 @@ function buildServer() {
     {
       title: "Mailbox info",
       annotations: { readOnlyHint: true },
-      description: "Get Mailpit runtime info: version, message count, unread count, database size",
+      description:
+        "Get Mailpit runtime info: version, message count, unread count, database size — plus SMTPEndpoint, the host:port applications must send mail to for this mailbox to capture it (null if the operator hasn't advertised it)",
       inputSchema: {},
     },
-    async () => asResult(await mailpit("/api/v1/info")),
+    async () => asResult({ SMTPEndpoint: SMTP_ADVERTISE, ...(await mailpit("/api/v1/info")) }),
   );
 
   server.registerTool(

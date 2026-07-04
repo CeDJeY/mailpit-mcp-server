@@ -37,7 +37,10 @@ if (!rendered.messages?.[0]?.content?.text?.includes("wait_for_message")) throw 
 console.log("verify_email prompt renders OK");
 
 const info = JSON.parse(await call("get_mailbox_info"));
-console.log("get_mailbox_info: Mailpit", info.Version, "—", info.Messages, "message(s)");
+console.log("get_mailbox_info: Mailpit", info.Version, "—", info.Messages, "message(s), SMTP:", info.SMTPEndpoint ?? "(not advertised)");
+if (process.env.EXPECT_SMTP_ENDPOINT && info.SMTPEndpoint !== process.env.EXPECT_SMTP_ENDPOINT) {
+  throw new Error(`SMTPEndpoint mismatch: got ${info.SMTPEndpoint}, expected ${process.env.EXPECT_SMTP_ENDPOINT}`);
+}
 
 const list = JSON.parse(await call("list_messages", { limit: 5 }));
 console.log("list_messages:", list.messages_count, "total");

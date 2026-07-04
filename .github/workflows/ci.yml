@@ -32,7 +32,7 @@ jobs:
 
       - name: Start MCP server (HTTP, auth enabled)
         run: |
-          MAILPIT_URL=http://localhost:8025 MCP_AUTH_TOKEN=ci-token node server.js &
+          MAILPIT_URL=http://localhost:8025 MCP_AUTH_TOKEN=ci-token MAILPIT_SMTP_ADVERTISE=localhost:1025 node server.js &
           for i in $(seq 1 20); do
             curl -sf http://localhost:3000/healthz && break
             sleep 0.5
@@ -46,7 +46,7 @@ jobs:
           test "$code" = "401"
 
       - name: Run MCP client e2e test
-        run: MCP_URL=http://localhost:3000/mcp MCP_AUTH_TOKEN=ci-token node mcp-test.js
+        run: MCP_URL=http://localhost:3000/mcp MCP_AUTH_TOKEN=ci-token EXPECT_SMTP_ENDPOINT=localhost:1025 node mcp-test.js
 
       - name: Docker image builds
         run: docker build -t mailpit-mcp-server:ci .

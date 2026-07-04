@@ -12,7 +12,7 @@ Mailpit only captures what is sent to **its SMTP port**. Before any email verifi
 - **SMTP host:port** — where the *application* sends mail (e.g. `mailpit-host:1025`; deployments often remap the port). No TLS, credentials optional (accepted but ignored).
 - **MCP endpoint URL** — where *you* (the agent) read the mailbox (e.g. `http://mailpit-host:3000/mcp`). Never give this to the application.
 
-Get the actual SMTP host and port from the user, the project's docs/CLAUDE.md, or the Mailpit docker-compose configuration. If you can only see the MCP endpoint, ask — do not guess that the ports match defaults.
+**First call `get_mailbox_info`**: if `SMTPEndpoint` is set, that is the authoritative answer — the operator advertised exactly where applications must send for THIS mailbox to capture their mail. Compare the project's mail config against it; any other destination (a different Mailpit instance, a real provider) means verification will wait for emails that never arrive here. If `SMTPEndpoint` is null, get the SMTP host and port from the user, the project's docs/CLAUDE.md, or the Mailpit docker-compose configuration — do not guess that ports match defaults, and do not derive the SMTP port from the MCP URL (they are unrelated).
 
 ## Configure the application
 
