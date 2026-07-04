@@ -43,13 +43,27 @@ function asResult(data) {
   return { content: [{ type: "text", text: typeof data === "string" ? data : JSON.stringify(data, null, 2) }] };
 }
 
+const INSTRUCTIONS = `Mailpit MCP server — access to a Mailpit test mailbox holding emails captured from the application under test. Nothing here is delivered to real recipients; send_message only injects test data into Mailpit.
+
+Typical workflows:
+- Inspect: list_messages or search_messages → get_message (full bodies + attachment metadata) → get_message_headers / get_message_source for MIME- or encoding-level debugging.
+- E2E testing: trigger the action in the app under test, then wait_for_message (e.g. query 'to:user@example.com subject:"welcome"') → get_message with the returned ID → verify content. wait_for_message also accepts messages that arrived up to accept_recent_seconds before the call, so call it right after (not long after) the trigger.
+- Template QA (HTML emails): get_message → check_html for email-client compatibility, check_links with follow=true to detect broken links. Look for unrendered template variables (e.g. {{name}}), missing sections, placeholder images.
+- Attachments: get_message lists Attachments with their PartID → get_attachment(id, part_id). Images are returned as viewable images; 2MB size cap.
+
+Notes:
+- Message IDs come from list/search/wait results; the literal string 'latest' works anywhere an ID is expected.
+- Search syntax: from:, to:, subject:"...", is:unread, tag:, has:attachment.
+- delete_messages WITHOUT ids deletes ALL messages — confirm intent before calling it that way.`;
+
 function buildServer() {
-  const server = new McpServer({ name: "mailpit", version: VERSION });
+  const server = new McpServer({ name: "mailpit", version: VERSION }, { instructions: INSTRUCTIONS });
 
   server.registerTool(
     "list_messages",
     {
       title: "List messages",
+      annotations: { readOnlyHint: true },
       description: "List messages in the Mailpit mailbox, newest first",
       inputSchema: {
         limit: z.number().int().min(1).max(200).default(25).describe("Max messages to return"),
@@ -63,6 +77,7 @@ function buildServer() {
     "search_messages",
     {
       title: "Search messages",
+      annotations: { readOnlyHint: true },
       description:
         'Search messages. Supports Mailpit search syntax, e.g. `from:user@example.com`, `subject:"welcome"`, `is:unread`, `tag:invoice`',
       inputSchema: {
@@ -78,6 +93,7 @@ function buildServer() {
     "get_message",
     {
       title: "Get message",
+      annotations: { readOnlyHint: true },
       description: "Get a full message by ID, including headers, text and HTML bodies, and attachment metadata",
       inputSchema: {
         id: z.string().min(1).describe("Message ID (from list_messages/search_messages), or `latest`"),
@@ -90,6 +106,7 @@ function buildServer() {
     "get_message_headers",
     {
       title: "Get message headers",
+      annotations: { readOnlyHint: true },
       description: "Get the raw headers of a message by ID",
       inputSchema: {
         id: z.string().min(1).describe("Message ID, or `latest`"),
@@ -102,6 +119,7 @@ function buildServer() {
     "delete_messages",
     {
       title: "Delete messages",
+      annotations: { destructiveHint: true },
       description: "Delete specific messages by ID, or ALL messages when no IDs are given",
       inputSchema: {
         ids: z.array(z.string()).optional().describe("Message IDs to delete; omit to delete all messages"),
@@ -120,6 +138,7 @@ function buildServer() {
     "get_mailbox_info",
     {
       title: "Mailbox info",
+      annotations: { readOnlyHint: true },
       description: "Get Mailpit runtime info: version, message count, unread count, database size",
       inputSchema: {},
     },
@@ -130,6 +149,7 @@ function buildServer() {
     "get_message_source",
     {
       title: "Get raw message source",
+      annotations: { readOnlyHint: true },
       description: "Get the full raw RFC-822 source of a message (headers + MIME parts), useful for debugging encoding issues",
       inputSchema: {
         id: z.string().min(1).describe("Message ID, or `latest`"),
@@ -142,6 +162,7 @@ function buildServer() {
     "get_attachment",
     {
       title: "Get attachment",
+      annotations: { readOnlyHint: true },
       description:
         "Download a message attachment by part ID (from get_message's Attachments list). Images are returned as images, text as text, other types as base64",
       inputSchema: {
@@ -176,6 +197,7 @@ function buildServer() {
     "check_html",
     {
       title: "Check HTML compatibility",
+      annotations: { readOnlyHint: true },
       description: "Analyze a message's HTML for compatibility across email clients (which features are supported where)",
       inputSchema: {
         id: z.string().min(1).describe("Message ID, or `latest`"),
@@ -188,6 +210,7 @@ function buildServer() {
     "check_links",
     {
       title: "Check links",
+      annotations: { readOnlyHint: true, openWorldHint: true },
       description: "Extract all links from a message and optionally verify them (detect broken links)",
       inputSchema: {
         id: z.string().min(1).describe("Message ID, or `latest`"),
@@ -202,6 +225,7 @@ function buildServer() {
     "send_message",
     {
       title: "Send test message",
+      annotations: { readOnlyHint: false, destructiveHint: false },
       description:
         "Compose and inject a test email into Mailpit via its API (no SMTP client needed). The message is captured by Mailpit, not delivered anywhere",
       inputSchema: {
@@ -238,6 +262,7 @@ function buildServer() {
     "set_read_status",
     {
       title: "Set read status",
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
       description: "Mark messages as read or unread, by ID or all messages when no IDs are given",
       inputSchema: {
         read: z.boolean().describe("true = mark read, false = mark unread"),
@@ -257,6 +282,7 @@ function buildServer() {
     "wait_for_message",
     {
       title: "Wait for message",
+      annotations: { readOnlyHint: true },
       description:
         "Poll until a NEW message arrives (optionally matching a search query) or the timeout expires. Useful in e2e flows: trigger an action, then wait for the resulting email",
       inputSchema: {
@@ -294,6 +320,65 @@ function buildServer() {
       }
       throw new Error(`No new message${query ? ` matching "${query}"` : ""} arrived within ${timeout_seconds}s`);
     },
+  );
+
+  server.registerPrompt(
+    "verify_email",
+    {
+      title: "Verify an expected email",
+      description: "Wait for an email matching a query, then verify its structure, links and client compatibility",
+      argsSchema: {
+        query: z.string().describe('Mailpit search query for the expected email, e.g. to:user@example.com subject:"welcome"'),
+        checklist: z.string().optional().describe("What the email must contain (structure/content requirements); omit for a general integrity check"),
+      },
+    },
+    ({ query, checklist }) => ({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: `Verify the email expected in the Mailpit test mailbox. Steps:
+
+1. Call wait_for_message with query \`${query}\` (it also accepts a message that arrived a few seconds ago).
+2. Call get_message with the returned ID and review subject, sender, recipients, text and HTML bodies.
+3. Call check_links with follow=true — report any broken links.
+4. If the message has an HTML body, call check_html and note compatibility warnings that matter for mainstream clients.
+5. Inspect for general defects: unrendered template variables (like {{name}}), placeholder/missing images, empty sections, encoding artifacts.
+
+${checklist ? `Verify against this checklist — every item must be satisfied:\n${checklist}` : "No specific checklist was provided — assess general integrity and structure."}
+
+Finish with a clear verdict: PASS or FAIL, followed by a short list of findings (most severe first). If the email never arrives, report that as a FAIL with the timeout details.`,
+          },
+        },
+      ],
+    }),
+  );
+
+  server.registerPrompt(
+    "inspect_mailbox",
+    {
+      title: "Inspect the mailbox",
+      description: "Summarize the current state of the Mailpit mailbox and flag anything unusual",
+      argsSchema: {},
+    },
+    () => ({
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: `Give me a summary of the Mailpit test mailbox:
+
+1. Call get_mailbox_info for totals and Mailpit version.
+2. Call list_messages (limit 20) and group what you see: senders, subjects, time range, read/unread, tags.
+3. Flag anything unusual: repeated identical messages (possible send loop in the app under test), unrendered template variables in snippets, messages with attachments, very large messages.
+
+Keep the summary short and lead with the most notable finding.`,
+          },
+        },
+      ],
+    }),
   );
 
   return server;

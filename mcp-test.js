@@ -21,6 +21,21 @@ async function call(name, args = {}) {
 const { tools } = await client.listTools();
 console.log(`Tools (${tools.length}):`, tools.map((t) => t.name).join(", "));
 
+const instructions = client.getInstructions();
+if (!instructions || instructions.length < 100) throw new Error("server instructions missing");
+console.log("instructions: present,", instructions.length, "chars");
+
+const del = tools.find((t) => t.name === "delete_messages");
+if (!del?.annotations?.destructiveHint) throw new Error("delete_messages missing destructiveHint");
+const ro = tools.filter((t) => t.annotations?.readOnlyHint).length;
+console.log(`annotations: ${ro} read-only tools, delete_messages is destructive`);
+
+const { prompts } = await client.listPrompts();
+console.log(`Prompts (${prompts.length}):`, prompts.map((p) => p.name).join(", "));
+const rendered = await client.getPrompt({ name: "verify_email", arguments: { query: "subject:test" } });
+if (!rendered.messages?.[0]?.content?.text?.includes("wait_for_message")) throw new Error("verify_email prompt broken");
+console.log("verify_email prompt renders OK");
+
 const info = JSON.parse(await call("get_mailbox_info"));
 console.log("get_mailbox_info: Mailpit", info.Version, "—", info.Messages, "message(s)");
 

@@ -102,6 +102,16 @@ claude mcp add --transport http mailpit http://localhost:3000/mcp \
 
 Or without Docker (Node 20+): clone the repo, `npm ci`, and use `"command": "node", "args": ["/path/to/server.js"]` with `MCP_TRANSPORT=stdio`.
 
+## Built-in agent context
+
+The server ships the context an AI agent needs — no extra prompting required by consumers:
+
+- **Server instructions** (delivered via the MCP initialize handshake): what the mailbox is, the standard workflows (inspect, e2e wait-then-verify, template QA, attachments), search syntax, and warnings — clients inject these into the model's context automatically.
+- **Tool annotations**: the ten read-only tools carry `readOnlyHint`, `delete_messages` carries `destructiveHint` — clients can auto-approve reads and gate deletes.
+- **MCP prompts**: `verify_email` (wait for a message matching a query, then verify structure, links and client compatibility against an optional checklist) and `inspect_mailbox` (summarize mailbox state, flag anomalies). Claude Code exposes these as slash commands.
+
+There's also a copyable [Claude Code skill](examples/claude-code-skill/verify-email/SKILL.md) encoding the full verification workflow — drop it into your project's `.claude/skills/` directory.
+
 ## Configuration
 
 | Variable | Default | Description |
