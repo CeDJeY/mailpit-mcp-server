@@ -24,7 +24,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) server for [Mailpit
 | `send_smtp_message` | Send over a REAL SMTP transaction (as applications do) to prove the SMTP channel works end-to-end |
 | `wait_for_message` | Poll until a new (optionally matching) message arrives — great for e2e flows |
 | `set_read_status` | Mark messages read/unread, by ID or all |
-| `delete_messages` | Delete messages by ID, or all messages |
+| `delete_messages` | Delete messages by ID (set `all:true` to delete every message) |
 | `get_mailbox_info` | Mailpit version, message/unread counts, database size |
 
 ## Quick start (Docker Compose)
@@ -113,7 +113,7 @@ Or without Docker (Node 20+): clone the repo, `npm ci`, and use `"command": "nod
 The server ships the context an AI agent needs — no extra prompting required by consumers:
 
 - **Server instructions** (delivered via the MCP initialize handshake): what the mailbox is, the standard workflows (inspect, e2e wait-then-verify, template QA, attachments), search syntax, and warnings — clients inject these into the model's context automatically.
-- **Tool annotations**: the ten read-only tools carry `readOnlyHint`, `delete_messages` carries `destructiveHint` — clients can auto-approve reads and gate deletes.
+- **Tool annotations**: the read-only tools carry `readOnlyHint`; the side-effecting ones (`send_message`, `send_smtp_message`, `set_read_status`, `check_links`, `delete_messages`) do not — so clients can auto-approve reads and gate writes. `check_links` is deliberately *not* read-only (it performs real GETs and can trigger one-click links); `delete_messages` additionally carries `destructiveHint`.
 - **MCP prompts**: `verify_email` (wait for a message matching a query, then verify structure, links and client compatibility against an optional checklist) and `inspect_mailbox` (summarize mailbox state, flag anomalies). Claude Code exposes these as slash commands.
 
 ## Claude Code plugin
@@ -146,6 +146,7 @@ Plugin source lives in [plugin/](plugin/); non-plugin users can copy the [skills
 | `MCP_AUTH_TOKEN` | *(empty = auth off)* | When set, `/mcp` requires `Authorization: Bearer <token>` |
 | `MAILPIT_AUTH_USER` / `MAILPIT_AUTH_PASS` | *(none)* | Basic-auth credentials if Mailpit's API is protected |
 | `MAILPIT_SMTP_ENDPOINT` | **required** | SMTP `host:port` applications must send to (as reachable by them); exposed to agents via `get_mailbox_info` (`SMTPEndpoint`) and the server instructions for routing checks, and used as `send_smtp_message`'s default target. The server refuses to start without it (`MAILPIT_SMTP_ADVERTISE` still accepted as a deprecated alias) |
+| `MAILPIT_SMTP_ALLOWED_ENDPOINTS` | *(empty = any host)* | Comma-separated allowlist of `host:port` targets accepted by `send_smtp_message`'s `endpoint` override. `MAILPIT_SMTP_ENDPOINT` is always allowed; the link-local/metadata range (`169.254.0.0/16`) is always blocked |
 
 The HTTP mode also serves `GET /healthz` (no auth) for container healthchecks.
 

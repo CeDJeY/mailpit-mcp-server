@@ -2,7 +2,7 @@
   "name": "mailpit",
   "displayName": "Mailpit Email Testing",
   "description": "Work with a Mailpit test mailbox: 15 MCP tools (read, search, send, wait-for, link/HTML checks) plus skills for email verification and SMTP routing setup",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "author": {
     "name": "CeDJeY",
     "url": "https://github.com/CeDJeY"
@@ -14,8 +14,8 @@
     "mcp_url": {
       "type": "string",
       "title": "Mailpit MCP endpoint URL",
-      "description": "The /mcp endpoint of your mailpit-mcp-server instance, e.g. http://your-host:3000/mcp",
-      "default": "http://localhost:3000/mcp"
+      "description": "The /mcp endpoint of your mailpit-mcp-server instance, e.g. https://mailpit-mcp.example.com/mcp",
+      "default": ""
     },
     "auth_token": {
       "type": "string",

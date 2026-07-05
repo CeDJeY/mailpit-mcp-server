@@ -45,6 +45,14 @@ jobs:
             -d '{"jsonrpc":"2.0","method":"ping","id":1}')
           test "$code" = "401"
 
+      - name: Reject requests with a wrong token
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:3000/mcp \
+            -H 'Content-Type: application/json' \
+            -H 'Authorization: Bearer wrong-token' \
+            -d '{"jsonrpc":"2.0","method":"ping","id":1}')
+          test "$code" = "401"
+
       - name: Run MCP client e2e test
         run: MCP_URL=http://localhost:3000/mcp MCP_AUTH_TOKEN=ci-token EXPECT_SMTP_ENDPOINT=localhost:1025 node mcp-test.js
 

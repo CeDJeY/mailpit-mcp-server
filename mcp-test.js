@@ -77,6 +77,17 @@ console.log("get_message_links:", extracted.count, "link(s):", extracted.links.j
 await call("set_read_status", { read: true, ids: [sent.ID] });
 console.log("set_read_status: OK");
 
+// delete_messages must refuse the wipe-all path unless explicitly confirmed.
+// Safe: this expects an error and deletes nothing.
+let refusedDeleteAll = false;
+try {
+  await call("delete_messages", {});
+} catch {
+  refusedDeleteAll = true;
+}
+if (!refusedDeleteAll) throw new Error("delete_messages did not refuse an unconfirmed delete-all");
+console.log("delete_messages: refuses unconfirmed delete-all (needs all:true or ids) OK");
+
 // send over the REAL SMTP channel and confirm capture
 const smtp = JSON.parse(
   await call("send_smtp_message", {

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
+import { createHash, timingSafeEqual } from "node:crypto";
 import nodemailer from "nodemailer";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -28,6 +29,13 @@ if (!SMTP_ENDPOINT) {
 if (!process.env.MAILPIT_SMTP_ENDPOINT && process.env.MAILPIT_SMTP_ADVERTISE) {
   console.error("MAILPIT_SMTP_ADVERTISE is deprecated — rename it to MAILPIT_SMTP_ENDPOINT.");
 }
+// Optional hard allowlist for send_smtp_message's `endpoint` override (comma-separated
+// host:port). Empty = allow any reachable host (the link-local/metadata range is always
+// blocked); the configured MAILPIT_SMTP_ENDPOINT is always permitted.
+const SMTP_ALLOWLIST = (process.env.MAILPIT_SMTP_ALLOWED_ENDPOINTS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 // Credentials for Mailpit itself, when its API is behind basic auth (--ui-auth-file)
 const MAILPIT_BASIC_AUTH =
   process.env.MAILPIT_AUTH_USER && process.env.MAILPIT_AUTH_PASS
@@ -58,6 +66,32 @@ function asResult(data) {
   return { content: [{ type: "text", text: typeof data === "string" ? data : JSON.stringify(data, null, 2) }] };
 }
 
+// Constant-time bearer comparison: hash both sides to a fixed length so
+// timingSafeEqual never throws on a length mismatch and no prefix/length is leaked.
+function safeEqual(a, b) {
+  return timingSafeEqual(createHash("sha256").update(a).digest(), createHash("sha256").update(b).digest());
+}
+
+// Validate and resolve an SMTP target (host:port). Enforces a real port range,
+// blocks the link-local/cloud-metadata range (169.254.0.0/16 — never a Mailpit),
+// and honours the optional allowlist. Throws on anything invalid or disallowed.
+function resolveSmtpTarget(endpoint) {
+  const target = endpoint ?? SMTP_ENDPOINT;
+  const i = target.lastIndexOf(":");
+  const host = target.slice(0, i);
+  const port = Number(target.slice(i + 1));
+  if (!host || !Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid SMTP endpoint "${target}": expected host:port with port 1-65535`);
+  }
+  if (/^169\.254\./.test(host)) {
+    throw new Error(`Refusing to send to link-local address ${host}`);
+  }
+  if (SMTP_ALLOWLIST.length && target !== SMTP_ENDPOINT && !SMTP_ALLOWLIST.includes(target)) {
+    throw new Error(`SMTP endpoint "${target}" is not permitted (set MAILPIT_SMTP_ALLOWED_ENDPOINTS)`);
+  }
+  return { host, port, target };
+}
+
 const INSTRUCTIONS = `Mailpit MCP server — access to a Mailpit test mailbox holding emails captured from the application under test. Nothing here is delivered to real recipients; send_message only injects test data into Mailpit.
 
 IMPORTANT: this mailbox only captures mail sent to its SMTP endpoint: ${SMTP_ENDPOINT}. Before verifying emails, make sure the application under test sends there — if its mail config points elsewhere (another Mailpit instance, a real provider), the emails you wait for will never appear here. To prove the SMTP channel itself works, use send_smtp_message (a real SMTP transaction, exactly like an application) — if the endpoint isn't reachable from the MCP server's own network (e.g. it names localhost or a host-only address), pass its \`endpoint\` parameter with a network-local address such as the Mailpit container hostname (mailpit:1025).
@@ -72,7 +106,7 @@ Typical workflows:
 Notes:
 - Message IDs come from list/search/wait results; the literal string 'latest' works anywhere an ID is expected.
 - Search syntax: from:, to:, subject:"...", is:unread, tag:, has:attachment.
-- delete_messages WITHOUT ids deletes ALL messages — confirm intent before calling it that way.`;
+- delete_messages / set_read_status only touch EVERY message when you explicitly pass all:true; omitting ids on its own is refused, so a stray call can't wipe the mailbox.`;
 
 function buildServer() {
   const server = new McpServer({ name: "mailpit", version: VERSION }, { instructions: INSTRUCTIONS });
@@ -138,17 +172,23 @@ function buildServer() {
     {
       title: "Delete messages",
       annotations: { destructiveHint: true },
-      description: "Delete specific messages by ID, or ALL messages when no IDs are given",
+      description:
+        "Delete specific messages by ID. To delete EVERY message you must explicitly set `all: true` — omitting `ids` on its own is refused as a safety guard",
       inputSchema: {
-        ids: z.array(z.string()).optional().describe("Message IDs to delete; omit to delete all messages"),
+        ids: z.array(z.string()).optional().describe("Message IDs to delete"),
+        all: z.boolean().optional().describe("Set true to delete ALL messages; required when `ids` is omitted"),
       },
     },
-    async ({ ids }) => {
-      await mailpit("/api/v1/messages", {
-        method: "DELETE",
-        body: JSON.stringify(ids?.length ? { IDs: ids } : {}),
-      });
-      return asResult(ids?.length ? `Deleted ${ids.length} message(s)` : "Deleted all messages");
+    async ({ ids, all }) => {
+      if (ids?.length) {
+        await mailpit("/api/v1/messages", { method: "DELETE", body: JSON.stringify({ IDs: ids }) });
+        return asResult(`Deleted ${ids.length} message(s)`);
+      }
+      if (all !== true) {
+        throw new Error("Refusing to delete: pass specific `ids`, or set `all: true` to delete every message.");
+      }
+      await mailpit("/api/v1/messages", { method: "DELETE", body: JSON.stringify({}) });
+      return asResult("Deleted all messages");
     },
   );
 
@@ -229,7 +269,9 @@ function buildServer() {
     "check_links",
     {
       title: "Check links",
-      annotations: { readOnlyHint: true, openWorldHint: true },
+      // NOT readOnlyHint: it performs real GETs and can trigger one-click action
+      // links, so clients should gate it rather than auto-approve it.
+      annotations: { readOnlyHint: false, openWorldHint: true },
       description:
         "Verify a message's links by REQUESTING each one and reporting HTTP status codes. Caution: this performs a real GET on every link — one-click action links (unsubscribe, confirmation) may be triggered by it; use get_message_links to retrieve URLs without requesting them. Interpret results with context: auth-protected links legitimately return 302/401/403 without being broken",
       inputSchema: {
@@ -327,8 +369,7 @@ function buildServer() {
       },
     },
     async ({ from, to, subject, text, html, endpoint }) => {
-      const target = endpoint ?? SMTP_ENDPOINT;
-      const [host, port] = [target.slice(0, target.lastIndexOf(":")), Number(target.slice(target.lastIndexOf(":") + 1))];
+      const { host, port, target } = resolveSmtpTarget(endpoint);
       const transporter = nodemailer.createTransport({
         host,
         port,
@@ -350,13 +391,18 @@ function buildServer() {
     {
       title: "Set read status",
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-      description: "Mark messages as read or unread, by ID or all messages when no IDs are given",
+      description:
+        "Mark messages as read or unread by ID. To apply to EVERY message you must explicitly set `all: true` — omitting `ids` on its own is refused",
       inputSchema: {
         read: z.boolean().describe("true = mark read, false = mark unread"),
-        ids: z.array(z.string()).optional().describe("Message IDs; omit to apply to all messages"),
+        ids: z.array(z.string()).optional().describe("Message IDs"),
+        all: z.boolean().optional().describe("Set true to apply to ALL messages; required when `ids` is omitted"),
       },
     },
-    async ({ read, ids }) => {
+    async ({ read, ids, all }) => {
+      if (!ids?.length && all !== true) {
+        throw new Error("Refusing to update all messages: pass specific `ids`, or set `all: true`.");
+      }
       await mailpit("/api/v1/messages", {
         method: "PUT",
         body: JSON.stringify({ IDs: ids ?? [], Read: read }),
@@ -486,7 +532,7 @@ async function startHttp() {
   app.use("/mcp", (req, res, next) => {
     if (!AUTH_TOKEN) return next();
     const header = req.headers.authorization ?? "";
-    if (header === `Bearer ${AUTH_TOKEN}`) return next();
+    if (safeEqual(header, `Bearer ${AUTH_TOKEN}`)) return next();
     res.status(401).json({
       jsonrpc: "2.0",
       error: { code: -32001, message: "Unauthorized" },
