@@ -4,7 +4,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) server for [Mailpit
 
 - **Streamable HTTP transport** — run it as a network service next to Mailpit (Docker Compose friendly), or
 - **stdio transport** — let your MCP client spawn it locally
-- **Bearer-token auth** for the HTTP endpoint, so it can safely sit behind a tunnel/reverse proxy
+- **Bearer-token auth** for the HTTP endpoint, so it can safely sit behind a reverse proxy
 - Single small dependency surface: the official [`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol/typescript-sdk), Express and Zod
 
 ## Tools
@@ -152,7 +152,7 @@ The HTTP mode also serves `GET /healthz` (no auth) for container healthchecks.
 
 ## Security notes
 
-Mailpit captures every email your app sends — treat the MCP endpoint as sensitive. Set `MCP_AUTH_TOKEN` whenever the port is reachable beyond localhost, and prefer keeping it off the public internet (private network, VPN, or an authenticated tunnel). `delete_messages` is destructive; scope access accordingly.
+Mailpit captures every email your app sends — treat the MCP endpoint as sensitive. Set `MCP_AUTH_TOKEN` whenever the port is reachable beyond localhost, and prefer keeping it off the public internet (private network or VPN). `delete_messages` is destructive; scope access accordingly.
 
 ## Development
 

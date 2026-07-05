@@ -2,7 +2,7 @@
   "name": "mailpit",
   "displayName": "Mailpit Email Testing",
   "description": "Work with a Mailpit test mailbox: 15 MCP tools (read, search, send, wait-for, link/HTML checks) plus skills for email verification and SMTP routing setup",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "author": {
     "name": "CeDJeY",
     "url": "https://github.com/CeDJeY"
