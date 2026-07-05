@@ -1,7 +1,7 @@
 {
   "name": "mailpit-mcp-server",
-  "version": "1.4.0",
-  "description": "MCP server for Mailpit — lets AI assistants read, search and manage captured test emails over streamable HTTP or stdio",
+  "version": "2.0.0",
+  "description": "MCP server for Mailpit \u2014 lets AI assistants read, search and manage captured test emails over streamable HTTP or stdio",
   "type": "module",
   "main": "server.js",
   "scripts": {
@@ -28,6 +28,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.0",
     "express": "^5.1.0",
+    "nodemailer": "^9.0.3",
     "zod": "^3.24.0"
   }
 }

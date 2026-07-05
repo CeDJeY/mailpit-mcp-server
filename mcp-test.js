@@ -77,6 +77,20 @@ console.log("get_message_links:", extracted.count, "link(s):", extracted.links.j
 await call("set_read_status", { read: true, ids: [sent.ID] });
 console.log("set_read_status: OK");
 
+// send over the REAL SMTP channel and confirm capture
+const smtp = JSON.parse(
+  await call("send_smtp_message", {
+    from: "smtp-check@example.com",
+    to: ["dest@example.com"],
+    subject: "SMTP channel check",
+    html: "<p>sent over a real SMTP transaction</p>",
+    ...(process.env.SMTP_TEST_ENDPOINT ? { endpoint: process.env.SMTP_TEST_ENDPOINT } : {}),
+  }),
+);
+console.log("send_smtp_message:", smtp.response, "via", smtp.endpoint);
+const smtpMsg = JSON.parse(await call("wait_for_message", { query: 'subject:"SMTP channel check"', timeout_seconds: 15 }));
+console.log("smtp message captured:", smtpMsg.Subject);
+
 // wait_for_message: start waiting, then send — the wait must pick it up
 const waitPromise = call("wait_for_message", { query: 'subject:"wait-target"', timeout_seconds: 20 });
 await call("send_message", {

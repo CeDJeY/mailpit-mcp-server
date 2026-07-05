@@ -12,7 +12,9 @@ Mailpit only captures what is sent to **its SMTP port**. Before any email verifi
 - **SMTP host:port** — where the *application* sends mail (e.g. `mailpit-host:1025`; deployments often remap the port). No TLS, credentials optional (accepted but ignored).
 - **MCP endpoint URL** — where *you* (the agent) read the mailbox (e.g. `http://mailpit-host:3000/mcp`). Never give this to the application.
 
-**First call `get_mailbox_info`**: if `SMTPEndpoint` is set, that is the authoritative answer — the operator advertised exactly where applications must send for THIS mailbox to capture their mail. Compare the project's mail config against it; any other destination (a different Mailpit instance, a real provider) means verification will wait for emails that never arrive here. If `SMTPEndpoint` is null, get the SMTP host and port from the user, the project's docs/CLAUDE.md, or the Mailpit docker-compose configuration — do not guess that ports match defaults, and do not derive the SMTP port from the MCP URL (they are unrelated).
+**First call `get_mailbox_info`**: `SMTPEndpoint` is the authoritative answer — the operator configured exactly where applications must send for THIS mailbox to capture their mail. Compare the project's mail config against it; any other destination (a different Mailpit instance, a real provider) means verification will wait for emails that never arrive here. Do not derive the SMTP port from the MCP URL — they are unrelated.
+
+**Prove the mailbox side before debugging the app side:** `send_smtp_message` performs a real SMTP transaction to the endpoint (like an application would) — if it lands (confirm with `wait_for_message`), the SMTP channel works and any remaining problem is in the app's configuration. If the endpoint names an address unreachable from the MCP server's own network (e.g. `localhost:...`), pass the tool's `endpoint` parameter with a network-local address (such as the Mailpit container hostname `mailpit:1025`) — that still proves Mailpit accepts SMTP, though not the app-visible path.
 
 ## Configure the application
 

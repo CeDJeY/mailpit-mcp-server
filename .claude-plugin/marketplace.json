@@ -10,13 +10,21 @@
       "name": "mailpit",
       "source": "./plugin",
       "displayName": "Mailpit Email Testing",
-      "description": "Work with a Mailpit test mailbox: 14 MCP tools (read, search, send, wait-for, link/HTML checks) plus skills for email verification and SMTP routing setup",
-      "version": "1.4.0",
-      "author": { "name": "CeDJeY" },
+      "description": "Work with a Mailpit test mailbox: 15 MCP tools (read, search, send, wait-for, link/HTML checks) plus skills for email verification and SMTP routing setup",
+      "version": "2.0.0",
+      "author": {
+        "name": "CeDJeY"
+      },
       "homepage": "https://github.com/CeDJeY/mailpit-mcp-server",
       "repository": "https://github.com/CeDJeY/mailpit-mcp-server",
       "license": "MIT",
-      "keywords": ["mailpit", "email", "smtp", "testing", "mcp"],
+      "keywords": [
+        "mailpit",
+        "email",
+        "smtp",
+        "testing",
+        "mcp"
+      ],
       "category": "testing"
     }
   ]

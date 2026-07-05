@@ -21,6 +21,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io/) server for [Mailpit
 | `get_message_links` | Extract all URLs without requesting them — safe retrieval of confirmation/reset/unsubscribe links for e2e flows |
 | `check_links` | Verify links by requesting them (real GETs — may trigger one-click actions; auth-protected links can return 302/401/403 without being broken) |
 | `send_message` | Compose and inject a test email via the Mailpit API (captured, not delivered) |
+| `send_smtp_message` | Send over a REAL SMTP transaction (as applications do) to prove the SMTP channel works end-to-end |
 | `wait_for_message` | Poll until a new (optionally matching) message arrives — great for e2e flows |
 | `set_read_status` | Mark messages read/unread, by ID or all |
 | `delete_messages` | Delete messages by ID, or all messages |
@@ -41,11 +42,13 @@ services:
       start_period: 10s
 
   mailpit-mcp:
-    image: ghcr.io/cedjey/mailpit-mcp-server:1
+    image: ghcr.io/cedjey/mailpit-mcp-server:2
     ports:
       - "3000:3000"   # MCP endpoint: http://localhost:3000/mcp
     environment:
       MAILPIT_URL: http://mailpit:8025
+      # Required: where applications send SMTP, as reachable by them
+      MAILPIT_SMTP_ENDPOINT: localhost:1025
       # Recommended: require "Authorization: Bearer <token>" on /mcp
       # MCP_AUTH_TOKEN: your-secret-token
     depends_on:
@@ -58,8 +61,9 @@ Or standalone against an existing Mailpit:
 ```bash
 docker run -d -p 3000:3000 \
   -e MAILPIT_URL=http://your-mailpit-host:8025 \
+  -e MAILPIT_SMTP_ENDPOINT=your-mailpit-host:1025 \
   -e MCP_AUTH_TOKEN=your-secret-token \
-  ghcr.io/cedjey/mailpit-mcp-server:1
+  ghcr.io/cedjey/mailpit-mcp-server:2
 ```
 
 ## Connecting clients
@@ -95,7 +99,8 @@ claude mcp add --transport http mailpit http://localhost:3000/mcp \
       "args": ["run", "-i", "--rm",
         "-e", "MCP_TRANSPORT=stdio",
         "-e", "MAILPIT_URL=http://host.docker.internal:8025",
-        "ghcr.io/cedjey/mailpit-mcp-server:1"]
+        "-e", "MAILPIT_SMTP_ENDPOINT=localhost:1025",
+        "ghcr.io/cedjey/mailpit-mcp-server:2"]
     }
   }
 }
@@ -140,7 +145,7 @@ Plugin source lives in [plugin/](plugin/); non-plugin users can copy the [skills
 | `MCP_HTTP_PORT` | `3000` | Port for the HTTP endpoint |
 | `MCP_AUTH_TOKEN` | *(empty = auth off)* | When set, `/mcp` requires `Authorization: Bearer <token>` |
 | `MAILPIT_AUTH_USER` / `MAILPIT_AUTH_PASS` | *(none)* | Basic-auth credentials if Mailpit's API is protected |
-| `MAILPIT_SMTP_ADVERTISE` | *(none)* | SMTP `host:port` applications must send to (as reachable by them); exposed to agents via `get_mailbox_info` (`SMTPEndpoint`) and the server instructions so they can verify app mail routing |
+| `MAILPIT_SMTP_ENDPOINT` | **required** | SMTP `host:port` applications must send to (as reachable by them); exposed to agents via `get_mailbox_info` (`SMTPEndpoint`) and the server instructions for routing checks, and used as `send_smtp_message`'s default target. The server refuses to start without it (`MAILPIT_SMTP_ADVERTISE` still accepted as a deprecated alias) |
 
 The HTTP mode also serves `GET /healthz` (no auth) for container healthchecks.
 

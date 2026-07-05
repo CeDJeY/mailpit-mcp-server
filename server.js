@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
+import nodemailer from "nodemailer";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -13,9 +14,20 @@ const TRANSPORT = process.env.MCP_TRANSPORT ?? "http";
 const PORT = Number(process.env.MCP_HTTP_PORT ?? 3000);
 // When set, every /mcp request must carry "Authorization: Bearer <token>"
 const AUTH_TOKEN = process.env.MCP_AUTH_TOKEN?.trim() || null;
-// Operator-advertised SMTP endpoint (host:port) applications must send to for
-// THIS Mailpit to capture their mail — exposed to agents via get_mailbox_info
-const SMTP_ADVERTISE = process.env.MAILPIT_SMTP_ADVERTISE?.trim() || null;
+// REQUIRED: SMTP endpoint (host:port) applications must send to for THIS
+// Mailpit to capture their mail — exposed to agents via get_mailbox_info and
+// used as the default target of send_smtp_message
+const SMTP_ENDPOINT =
+  process.env.MAILPIT_SMTP_ENDPOINT?.trim() || process.env.MAILPIT_SMTP_ADVERTISE?.trim() || null;
+if (!SMTP_ENDPOINT) {
+  console.error(
+    "MAILPIT_SMTP_ENDPOINT is required: the SMTP host:port applications send mail to, as reachable by them (e.g. mail.internal:2525).",
+  );
+  process.exit(1);
+}
+if (!process.env.MAILPIT_SMTP_ENDPOINT && process.env.MAILPIT_SMTP_ADVERTISE) {
+  console.error("MAILPIT_SMTP_ADVERTISE is deprecated — rename it to MAILPIT_SMTP_ENDPOINT.");
+}
 // Credentials for Mailpit itself, when its API is behind basic auth (--ui-auth-file)
 const MAILPIT_BASIC_AUTH =
   process.env.MAILPIT_AUTH_USER && process.env.MAILPIT_AUTH_PASS
@@ -48,11 +60,7 @@ function asResult(data) {
 
 const INSTRUCTIONS = `Mailpit MCP server — access to a Mailpit test mailbox holding emails captured from the application under test. Nothing here is delivered to real recipients; send_message only injects test data into Mailpit.
 
-${
-  SMTP_ADVERTISE
-    ? `IMPORTANT: this mailbox only captures mail sent to its SMTP endpoint: ${SMTP_ADVERTISE}. Before verifying emails, make sure the application under test sends there — if its mail config points elsewhere (another Mailpit instance, a real provider), the emails you wait for will never appear here.`
-    : `IMPORTANT: this mailbox only captures mail sent to its SMTP endpoint. The operator has not advertised that endpoint (MAILPIT_SMTP_ADVERTISE is unset) — ask the user for the SMTP host:port before configuring or diagnosing the application under test; do not guess ports.`
-}
+IMPORTANT: this mailbox only captures mail sent to its SMTP endpoint: ${SMTP_ENDPOINT}. Before verifying emails, make sure the application under test sends there — if its mail config points elsewhere (another Mailpit instance, a real provider), the emails you wait for will never appear here. To prove the SMTP channel itself works, use send_smtp_message (a real SMTP transaction, exactly like an application) — if the endpoint isn't reachable from the MCP server's own network (e.g. it names localhost or a host-only address), pass its \`endpoint\` parameter with a network-local address such as the Mailpit container hostname (mailpit:1025).
 
 Typical workflows:
 - Inspect: list_messages or search_messages → get_message (full bodies + attachment metadata) → get_message_headers / get_message_source for MIME- or encoding-level debugging.
@@ -150,10 +158,10 @@ function buildServer() {
       title: "Mailbox info",
       annotations: { readOnlyHint: true },
       description:
-        "Get Mailpit runtime info: version, message count, unread count, database size — plus SMTPEndpoint, the host:port applications must send mail to for this mailbox to capture it (null if the operator hasn't advertised it)",
+        "Get Mailpit runtime info: version, message count, unread count, database size — plus SMTPEndpoint, the host:port applications must send mail to for this mailbox to capture it",
       inputSchema: {},
     },
-    async () => asResult({ SMTPEndpoint: SMTP_ADVERTISE, ...(await mailpit("/api/v1/info")) }),
+    async () => asResult({ SMTPEndpoint: SMTP_ENDPOINT, ...(await mailpit("/api/v1/info")) }),
   );
 
   server.registerTool(
@@ -296,6 +304,45 @@ function buildServer() {
           }),
         }),
       ),
+  );
+
+  server.registerTool(
+    "send_smtp_message",
+    {
+      title: "Send via the SMTP channel",
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+      description:
+        "Send an email over a REAL SMTP transaction — exactly what applications do — to prove the SMTP path into this mailbox works end-to-end (unlike send_message, which injects via the HTTP API and proves nothing about SMTP). Defaults to the configured SMTP endpoint; if that address isn't reachable from the MCP server's own network (e.g. it names localhost or a host-only address), pass `endpoint` with a network-local address such as the Mailpit container hostname (mailpit:1025). Confirm capture afterwards with wait_for_message or search_messages",
+      inputSchema: {
+        from: z.string().email().describe("Sender email address"),
+        to: z.array(z.string().email()).min(1).describe("Recipient email addresses"),
+        subject: z.string().describe("Subject line"),
+        text: z.string().optional().describe("Plain-text body"),
+        html: z.string().optional().describe("HTML body"),
+        endpoint: z
+          .string()
+          .regex(/^[^\s:]+:\d+$/, "host:port")
+          .optional()
+          .describe("SMTP host:port override; defaults to the configured SMTP endpoint"),
+      },
+    },
+    async ({ from, to, subject, text, html, endpoint }) => {
+      const target = endpoint ?? SMTP_ENDPOINT;
+      const [host, port] = [target.slice(0, target.lastIndexOf(":")), Number(target.slice(target.lastIndexOf(":") + 1))];
+      const transporter = nodemailer.createTransport({
+        host,
+        port,
+        secure: false,
+        connectionTimeout: 10_000,
+        tls: { rejectUnauthorized: false },
+      });
+      try {
+        const info = await transporter.sendMail({ from, to, subject, text, html });
+        return asResult({ endpoint: target, messageId: info.messageId, response: info.response });
+      } finally {
+        transporter.close();
+      }
+    },
   );
 
   server.registerTool(
